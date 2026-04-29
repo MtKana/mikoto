@@ -1,0 +1,15 @@
+{
+  "$schema": "https://rork.com/schema/rork.json",
+  "apps": [
+    {
+      "name": "Mikoto",
+      "path": "ios",
+      "framework": "swift"
+    },
+    {
+      "name": "Backend",
+      "path": "backend",
+      "framework": "supabase"
+    }
+  ]
+}

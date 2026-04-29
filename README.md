@@ -1,2 +1,0 @@
-# mikoto
-Created by Rork
