@@ -16,6 +16,7 @@ class AuthManager: NSObject {
     var pendingVerificationPassword: String?
     var pendingVerificationName: String?
     var isVerifyingOtp = false
+    var inlineAuthError: String?
 
     private let supabaseURL: String = {
         let configured = Config.EXPO_PUBLIC_SUPABASE_URL
@@ -67,6 +68,7 @@ class AuthManager: NSObject {
             return
         }
         isSigningIn = true
+        inlineAuthError = nil
         defer { isSigningIn = false }
 
         guard let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=password") else {
@@ -88,6 +90,7 @@ class AuthManager: NSObject {
             return
         }
         isSigningIn = true
+        inlineAuthError = nil
         defer { isSigningIn = false }
 
         guard let url = URL(string: "\(supabaseURL)/auth/v1/signup") else {
@@ -109,7 +112,18 @@ class AuthManager: NSObject {
             if http.statusCode < 200 || http.statusCode >= 300 {
                 let err = try? JSONDecoder().decode(SupabaseError.self, from: data)
                 let raw = err?.msg ?? err?.error_description ?? err?.error ?? err?.message
-                setError(translateError(raw ?? "認証に失敗しました (\(http.statusCode))"))
+                let rawMessage = raw ?? "認証に失敗しました"
+                let inline = "[\(http.statusCode)] \(rawMessage)"
+                inlineAuthError = inline
+                NSLog("[Auth] signUp/signIn error: %@", inline)
+                if let bodyData = try? JSONSerialization.data(withJSONObject: body),
+                   let bodyString = String(data: bodyData, encoding: .utf8) {
+                    NSLog("[Auth] request body: %@", bodyString)
+                }
+                if let respString = String(data: data, encoding: .utf8) {
+                    NSLog("[Auth] response body: %@", respString)
+                }
+                setError(translateError(rawMessage) + "\n(\(http.statusCode))")
                 return
             }
 
@@ -133,6 +147,9 @@ class AuthManager: NSObject {
                 setError("ログインに失敗しました")
             }
         } catch {
+            let inline = "network: \(error.localizedDescription)"
+            inlineAuthError = inline
+            NSLog("[Auth] signUp/signIn network error: %@", inline)
             setError("ネットワークエラー: \(error.localizedDescription)")
         }
     }

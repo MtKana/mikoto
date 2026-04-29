@@ -32,6 +32,16 @@ struct SignInView: View {
                     modeToggle.padding(.horizontal, 24)
                     Spacer().frame(height: 14)
                     formBlock.padding(.horizontal, 24)
+                    if let inline = auth.inlineAuthError {
+                        Text(inline)
+                            .font(.mikotoSans(12, weight: .heavy))
+                            .foregroundStyle(Color.red)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 28)
+                            .padding(.top, 10)
+                            .textSelection(.enabled)
+                    }
                     Spacer().frame(height: 14)
                     submitButton.padding(.horizontal, 24)
                     legalBlock
