@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXContainerItemProxy section */
@@ -30,21 +30,9 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		105FC57C2E9EAD3100EA8BCF /* Mikoto */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Mikoto;
-			sourceTree = "<group>";
-		};
-		105FC58C2E9EAD3200EA8BCF /* MikotoTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MikotoTests;
-			sourceTree = "<group>";
-		};
-		105FC5962E9EAD3200EA8BCF /* MikotoUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MikotoUITests;
-			sourceTree = "<group>";
-		};
+		105FC57C2E9EAD3100EA8BCF /* Mikoto */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Mikoto; sourceTree = "<group>"; };
+		105FC58C2E9EAD3200EA8BCF /* MikotoTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = MikotoTests; sourceTree = "<group>"; };
+		105FC5962E9EAD3200EA8BCF /* MikotoUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = MikotoUITests; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -171,7 +159,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2600;
-				LastUpgradeCheck = 2600;
+				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					105FC5792E9EAD3100EA8BCF = {
 						CreatedOnToolsVersion = 26.0;
@@ -196,7 +184,6 @@
 			);
 			mainGroup = 105FC5712E9EAD3100EA8BCF;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			productRefGroup = 105FC57B2E9EAD3100EA8BCF /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -329,6 +316,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -386,6 +374,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -399,7 +388,7 @@
 				CODE_SIGN_ENTITLEMENTS = Mikoto/Mikoto.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = R2523995JM;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleURLTypes = "(\n  {\n    CFBundleURLName = \"app.rork.rz2e0xeqdz73wdw7tx6lw\";\n    CFBundleURLSchemes = ( \"mikoto\" );\n  }\n)";
@@ -436,7 +425,7 @@
 				CODE_SIGN_ENTITLEMENTS = Mikoto/Mikoto.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = R2523995JM;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleURLTypes = "(\n  {\n    CFBundleURLName = \"app.rork.rz2e0xeqdz73wdw7tx6lw\";\n    CFBundleURLSchemes = ( \"mikoto\" );\n  }\n)";
