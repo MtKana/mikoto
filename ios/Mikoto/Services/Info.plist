@@ -30,6 +30,12 @@
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Mikoto needs access to your photos to create AI profile portraits.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Mikoto saves your generated profile photos to your library.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Mikoto uses your camera to take photos for AI profile portraits.</string>
 	<key>EXPO_PUBLIC_SUPABASE_URL</key>
 	<string>https://nmunmpgljrtljithkjic.supabase.co</string>
 	<key>CFBundleIdentifier</key>
