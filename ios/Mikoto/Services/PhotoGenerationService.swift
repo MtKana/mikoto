@@ -31,65 +31,63 @@ nonisolated enum PhotoGenError: LocalizedError {
 
 nonisolated struct PhotoGenerationService: Sendable {
 
-    private static var toolkitURL: String {
-        let configured = (Bundle.main.infoDictionary?["EXPO_PUBLIC_TOOLKIT_URL"] as? String) ?? ""
-        return configured.isEmpty ? "https://toolkit.rork.com" : configured
-    }
+    private static let model = "gemini-2.5-flash-image"
 
-    private static var secretKey: String {
-        (Bundle.main.infoDictionary?["EXPO_PUBLIC_RORK_TOOLKIT_SECRET_KEY"] as? String) ?? ""
+    private static var apiKey: String {
+        (Bundle.main.infoDictionary?["GOOGLE_AI_API_KEY"] as? String) ?? ""
     }
 
     static func generate(from sourceImage: UIImage, style: PhotoStyle) async throws -> Data {
         let (imageData, mimeType) = try resizeForUpload(sourceImage)
         let base64 = imageData.base64EncodedString()
 
-        guard !secretKey.isEmpty else { throw PhotoGenError.missingConfig }
+        guard !apiKey.isEmpty else { throw PhotoGenError.missingConfig }
 
-        let url = URL(string: "\(toolkitURL)/v2/vercel/v1/chat/completions")!
+        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)")!
 
         let body: [String: Any] = [
-            "model": "google/gemini-3.1-flash-image-preview",
-            "modalities": ["text", "image"],
-            "messages": [
+            "contents": [
                 [
-                    "role": "user",
-                    "content": [
-                        ["type": "image_url", "image_url": ["url": "data:\(mimeType);base64,\(base64)"]],
-                        ["type": "text", "text": style.prompt]
+                    "parts": [
+                        ["inlineData": ["mimeType": mimeType, "data": base64]],
+                        ["text": style.prompt]
                     ] as [Any]
                 ]
+            ],
+            "generationConfig": [
+                "responseModalities": ["IMAGE", "TEXT"]
             ]
         ]
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(secretKey)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         request.timeoutInterval = 180
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw PhotoGenError.serverError(0) }
-        switch http.statusCode {
-        case 200: break
-        case 401: throw PhotoGenError.authError
-        case 402: throw PhotoGenError.insufficientBalance
-        case 413: throw PhotoGenError.payloadTooLarge
-        case 429: throw PhotoGenError.rateLimited
-        default:  throw PhotoGenError.serverError(http.statusCode)
+
+        if http.statusCode != 200 {
+            if let respString = String(data: data, encoding: .utf8) {
+                NSLog("[PhotoGen] error %d: %@", http.statusCode, respString)
+            }
+            switch http.statusCode {
+            case 400: throw PhotoGenError.imageProcessingFailed
+            case 401, 403: throw PhotoGenError.authError
+            case 413: throw PhotoGenError.payloadTooLarge
+            case 429: throw PhotoGenError.rateLimited
+            default:  throw PhotoGenError.serverError(http.statusCode)
+            }
         }
 
-        guard let dataURI = extractFirstImage(from: data) else {
+        guard let imageBase64 = extractFirstImage(from: data) else {
+            if let respString = String(data: data, encoding: .utf8) {
+                NSLog("[PhotoGen] no image in response: %@", respString)
+            }
             throw PhotoGenError.noImageReturned
         }
-        let raw: String
-        if dataURI.hasPrefix("data:"), let comma = dataURI.firstIndex(of: ",") {
-            raw = String(dataURI[dataURI.index(after: comma)...])
-        } else {
-            raw = dataURI
-        }
-        guard let outputData = Data(base64Encoded: raw) else {
+        guard let outputData = Data(base64Encoded: imageBase64) else {
             throw PhotoGenError.decodingFailed
         }
         return outputData
@@ -97,26 +95,15 @@ nonisolated struct PhotoGenerationService: Sendable {
 
     private static func extractFirstImage(from data: Data) -> String? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = json["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any] else {
+              let candidates = json["candidates"] as? [[String: Any]],
+              let content = candidates.first?["content"] as? [String: Any],
+              let parts = content["parts"] as? [[String: Any]] else {
             return nil
         }
-        if let images = message["images"] as? [Any] {
-            for item in images {
-                if let str = item as? String { return str }
-                if let obj = item as? [String: Any] {
-                    if let urlObj = obj["image_url"] as? [String: Any], let url = urlObj["url"] as? String {
-                        return url
-                    }
-                    if let url = obj["url"] as? String { return url }
-                }
-            }
-        }
-        if let content = message["content"] as? [[String: Any]] {
-            for part in content {
-                if let urlObj = part["image_url"] as? [String: Any], let url = urlObj["url"] as? String {
-                    return url
-                }
+        for part in parts {
+            if let inlineData = part["inlineData"] as? [String: Any],
+               let base64 = inlineData["data"] as? String {
+                return base64
             }
         }
         return nil
