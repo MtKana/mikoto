@@ -58,7 +58,8 @@ final class PhotoLibraryStore {
     }
 
     func removeAll() {
-        for photo in photos {
+        let snapshot = photos
+        for photo in snapshot {
             let url = dir.appendingPathComponent("\(photo.id.uuidString).jpg")
             try? FileManager.default.removeItem(at: url)
         }

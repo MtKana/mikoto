@@ -12,7 +12,7 @@
 
 **Accounts that work everywhere**
 - [x] Sign in with Apple or Google
-- [ ] Profile, plan, credits, library synced to cloud (currently local-first; cloud sync pending Supabase wiring)
+- [x] Profile, plan, credits, library synced to cloud via Supabase
 - [ ] Built to scale to millions of users (needs server-side enforcement)
 
 **First-time onboarding (10 steps, only on first launch)**
@@ -65,7 +65,7 @@
 - [x] Settings
 
 ## Behind the scenes
-- [ ] Cloud database (Supabase) for users, plans, balances, history
+- [x] Cloud database (Supabase) for users, plans, balances, history
 - [ ] RevenueCat + StoreKit for real subscription billing & promotional offers
 - [ ] Server-side credit deduction
 - [x] App icon (existing)

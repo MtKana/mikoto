@@ -39,7 +39,9 @@ nonisolated struct UserStyleData: Codable, Sendable {
 final class UserStyleStore {
     var data: UserStyleData?
 
-    var userId: String?
+    var onChange: (() -> Void)?
+    private var suppressOnChange: Bool = false
+
     private let key = "mikoto.userstyle.v1"
 
     init() {
@@ -70,56 +72,18 @@ final class UserStyleStore {
                 NSLog("[UserStyleStore] sync failed: %@", error.localizedDescription)
             }
         }
+        if !suppressOnChange { onChange?() }
     }
 
     func reset() {
         data = nil
         UserDefaults.standard.removeObject(forKey: key)
-        guard let userId else { return }
-        Task {
-            do {
-                try await supabase.from("user_styles").delete().eq("user_id", value: userId).execute()
-            } catch {
-                NSLog("[UserStyleStore] delete failed: %@", error.localizedDescription)
-            }
-        }
+        if !suppressOnChange { onChange?() }
     }
 
-    // MARK: - Supabase Sync
-
-    @MainActor
-    func loadFromSupabase(userId: String) async {
-        self.userId = userId
-        do {
-            let records: [UserStyleRecord] = try await supabase
-                .from("user_styles")
-                .select()
-                .eq("user_id", value: userId)
-                .execute()
-                .value
-
-            guard let record = records.first else {
-                NSLog("[UserStyleStore] no style found in Supabase")
-                if data != nil {
-                    save(data!)
-                }
-                return
-            }
-
-            data = record.styleData
-            persistLocally()
-            NSLog("[UserStyleStore] loaded from Supabase: %@", record.styleData.nameJP)
-        } catch {
-            NSLog("[UserStyleStore] load failed: %@", error.localizedDescription)
-        }
-    }
-
-    // MARK: - Local Persistence
-
-    private func persistLocally() {
-        guard let data else { return }
-        if let bytes = try? JSONEncoder().encode(data) {
-            UserDefaults.standard.set(bytes, forKey: key)
-        }
+    func applyRemote(_ data: UserStyleData) {
+        suppressOnChange = true
+        defer { suppressOnChange = false }
+        save(data)
     }
 }

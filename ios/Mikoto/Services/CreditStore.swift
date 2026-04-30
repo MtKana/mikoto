@@ -25,7 +25,9 @@ final class CreditStore {
     var renewalDate: Date
     var totalGenerated: Int
 
-    var userId: String?
+    var onChange: (() -> Void)?
+    private var suppressOnChange: Bool = false
+
     private let key = "mikoto.credit.state.v1"
 
     init() {
@@ -177,6 +179,27 @@ final class CreditStore {
         if let data = try? JSONEncoder().encode(snap) {
             UserDefaults.standard.set(data, forKey: key)
         }
+        if !suppressOnChange { onChange?() }
+    }
+
+    func applyRemote(
+        plan: Plan,
+        cycle: BillingCycle,
+        balance: Int,
+        trialActive: Bool,
+        trialEndsAt: Date?,
+        renewalDate: Date,
+        totalGenerated: Int
+    ) {
+        suppressOnChange = true
+        defer { suppressOnChange = false }
+        self.plan = plan
+        self.cycle = cycle
+        self.balance = balance
+        self.trialActive = trialActive
+        self.trialEndsAt = trialEndsAt
+        self.renewalDate = renewalDate
+        self.totalGenerated = totalGenerated
     }
 
     private func persistAndSync() {
