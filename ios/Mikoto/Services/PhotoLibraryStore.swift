@@ -5,6 +5,9 @@ import Observation
 final class PhotoLibraryStore {
     var photos: [GeneratedPhoto] = []
 
+    var onAdd: ((GeneratedPhoto) -> Void)?
+    var onRemove: ((GeneratedPhoto) -> Void)?
+
     private let indexKey = "mikoto.library.index.v1"
     private let dir: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -24,6 +27,16 @@ final class PhotoLibraryStore {
         try? photo.imageData.write(to: url, options: .atomic)
         photos.insert(photo, at: 0)
         saveIndex()
+        onAdd?(photo)
+    }
+
+    func insertFromRemote(_ photo: GeneratedPhoto) {
+        guard !photos.contains(where: { $0.id == photo.id }) else { return }
+        let url = dir.appendingPathComponent("\(photo.id.uuidString).jpg")
+        try? photo.imageData.write(to: url, options: .atomic)
+        photos.append(photo)
+        photos.sort { $0.createdAt > $1.createdAt }
+        saveIndex()
     }
 
     func remove(_ photo: GeneratedPhoto) {
@@ -31,15 +44,18 @@ final class PhotoLibraryStore {
         try? FileManager.default.removeItem(at: url)
         photos.removeAll { $0.id == photo.id }
         saveIndex()
+        onRemove?(photo)
     }
 
     func removeAll() {
-        for photo in photos {
+        let snapshot = photos
+        for photo in snapshot {
             let url = dir.appendingPathComponent("\(photo.id.uuidString).jpg")
             try? FileManager.default.removeItem(at: url)
         }
         photos.removeAll()
         saveIndex()
+        for photo in snapshot { onRemove?(photo) }
     }
 
     private func load() {

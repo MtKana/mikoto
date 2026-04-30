@@ -38,6 +38,9 @@ nonisolated struct UserStyleData: Codable, Sendable {
 final class UserStyleStore {
     var data: UserStyleData?
 
+    var onChange: (() -> Void)?
+    private var suppressOnChange: Bool = false
+
     private let key = "mikoto.userstyle.v1"
 
     init() {
@@ -60,10 +63,18 @@ final class UserStyleStore {
         if let bytes = try? JSONEncoder().encode(data) {
             UserDefaults.standard.set(bytes, forKey: key)
         }
+        if !suppressOnChange { onChange?() }
     }
 
     func reset() {
         data = nil
         UserDefaults.standard.removeObject(forKey: key)
+        if !suppressOnChange { onChange?() }
+    }
+
+    func applyRemote(_ data: UserStyleData) {
+        suppressOnChange = true
+        defer { suppressOnChange = false }
+        save(data)
     }
 }
