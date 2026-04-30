@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 import AuthenticationServices
 import CryptoKit
+import Supabase
 
 @Observable
 class AuthManager: NSObject {
@@ -18,18 +19,9 @@ class AuthManager: NSObject {
     var isVerifyingOtp = false
     var inlineAuthError: String?
 
-    private let supabaseURL: String = {
-        let configured = Config.EXPO_PUBLIC_SUPABASE_URL
-        return configured.isEmpty ? "https://nmunmpgljrtljithkjic.supabase.co" : configured
-    }()
-    private let supabaseAnonKey: String = {
-        let configured = Config.EXPO_PUBLIC_SUPABASE_ANON_KEY
-        return configured.isEmpty ? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tdW5tcGdsanJ0bGppdGhramljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczODE1NDgsImV4cCI6MjA5Mjk1NzU0OH0.AeS7jZILVz52tGxhMLJCGB4kYCKeqDRVWCy3u3oLo-I" : configured
-    }()
-    private let oauthRedirect = "mikoto://auth-callback"
-
     private var currentNonce: String?
     private var googleSession: ASWebAuthenticationSession?
+    private let oauthRedirect = "mikoto://auth-callback"
 
     nonisolated struct User: Codable, Sendable {
         let id: String
@@ -40,22 +32,40 @@ class AuthManager: NSObject {
 
     override init() {
         super.init()
-        Task { await checkAuth() }
+        KeychainHelper.delete("access_token")
+        KeychainHelper.delete("refresh_token")
+        Task { await observeAuthState() }
     }
 
+    // MARK: - Auth State Observation
+
     @MainActor
-    func checkAuth() async {
-        defer { isLoading = false }
-
-        if let accessToken = KeychainHelper.get("access_token"),
-           let user = userFromToken(accessToken) {
-            self.user = user
-            return
+    private func observeAuthState() async {
+        for await (event, session) in supabase.auth.authStateChanges {
+            switch event {
+            case .initialSession:
+                user = session.map { mapUser($0) }
+                isLoading = false
+            case .signedIn:
+                user = session.map { mapUser($0) }
+            case .signedOut:
+                user = nil
+            default:
+                break
+            }
         }
+    }
 
-        if KeychainHelper.get("refresh_token") != nil {
-            await refreshToken()
-        }
+    private func mapUser(_ session: Session) -> User {
+        let u = session.user
+        return User(
+            id: u.id.uuidString,
+            email: u.email ?? "",
+            name: u.userMetadata["name"]?.stringValue
+                ?? u.userMetadata["full_name"]?.stringValue,
+            picture: u.userMetadata["picture"]?.stringValue
+                ?? u.userMetadata["avatar_url"]?.stringValue
+        )
     }
 
     // MARK: - Email & Password
@@ -71,11 +81,11 @@ class AuthManager: NSObject {
         inlineAuthError = nil
         defer { isSigningIn = false }
 
-        guard let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=password") else {
-            setError("URLが無効です")
-            return
+        do {
+            try await supabase.auth.signIn(email: trimmed, password: password)
+        } catch {
+            handleAuthError(error)
         }
-        await postAuth(url: url, body: ["email": trimmed, "password": password], isSignUp: false)
     }
 
     @MainActor
@@ -93,159 +103,43 @@ class AuthManager: NSObject {
         inlineAuthError = nil
         defer { isSigningIn = false }
 
-        guard let url = URL(string: "\(supabaseURL)/auth/v1/signup") else {
-            setError("URLが無効です")
-            return
-        }
-        var body: [String: Any] = ["email": trimmed, "password": password]
-        if let name, !name.isEmpty {
-            body["data"] = ["name": name]
-        }
-        await postAuth(url: url, body: body, isSignUp: true)
-    }
-
-    @MainActor
-    private func postAuth(url: URL, body: [String: Any], isSignUp: Bool) async {
         do {
-            let (data, http) = try await sendJSON(url: url, body: body)
-
-            if http.statusCode < 200 || http.statusCode >= 300 {
-                let err = try? JSONDecoder().decode(SupabaseError.self, from: data)
-                let raw = err?.msg ?? err?.error_description ?? err?.error ?? err?.message
-                let rawMessage = raw ?? "認証に失敗しました"
-                let inline = "[\(http.statusCode)] \(rawMessage)"
-                inlineAuthError = inline
-                NSLog("[Auth] signUp/signIn error: %@", inline)
-                if let bodyData = try? JSONSerialization.data(withJSONObject: body),
-                   let bodyString = String(data: bodyData, encoding: .utf8) {
-                    NSLog("[Auth] request body: %@", bodyString)
-                }
-                if let respString = String(data: data, encoding: .utf8) {
-                    NSLog("[Auth] response body: %@", respString)
-                }
-                setError(translateError(rawMessage) + "\n(\(http.statusCode))")
-                return
+            var userData: [String: AnyJSON] = [:]
+            if let name, !name.isEmpty {
+                userData["name"] = .string(name)
             }
-
-            if let respString = String(data: data, encoding: .utf8) {
-                NSLog("[Auth] success response: %@", respString)
-            }
-
-            let token = try JSONDecoder().decode(SupabaseTokenResponse.self, from: data)
-
-            NSLog("[Auth] access_token present: %@, isSignUp: %@", token.access_token != nil ? "YES" : "NO", isSignUp ? "YES" : "NO")
-            NSLog("[Auth] access_token value: '%@'", token.access_token ?? "(nil)")
-
-            if let access = token.access_token, !access.isEmpty {
-                KeychainHelper.set("access_token", value: access)
-                if let refresh = token.refresh_token {
-                    KeychainHelper.set("refresh_token", value: refresh)
-                }
-                user = makeUser(from: token.user, accessToken: access)
-            } else if isSignUp {
-                if let bodyEmail = body["email"] as? String {
-                    NSLog("[Auth] setting pendingVerificationEmail: %@", bodyEmail)
-                    pendingVerificationEmail = bodyEmail
-                    pendingVerificationPassword = body["password"] as? String
-                    if let data = body["data"] as? [String: Any] {
-                        pendingVerificationName = data["name"] as? String
-                    }
-                }
-            } else {
-                setError("ログインに失敗しました")
+            let response = try await supabase.auth.signUp(
+                email: trimmed,
+                password: password,
+                data: userData.isEmpty ? nil : userData
+            )
+            if response.session == nil {
+                pendingVerificationEmail = trimmed
+                pendingVerificationPassword = password
+                pendingVerificationName = name
             }
         } catch {
-            let inline = "network: \(error.localizedDescription)"
-            inlineAuthError = inline
-            NSLog("[Auth] signUp/signIn network error: %@", inline)
-            setError("ネットワークエラー: \(error.localizedDescription)")
+            handleAuthError(error)
         }
     }
 
-    // MARK: - Deep link handling (email confirmation, magic link, OAuth fallback)
+    // MARK: - Deep link handling
 
     @MainActor
     func handleDeepLink(_ url: URL) async {
-        guard let host = url.host?.lowercased(), host == "auth-callback" || host == "login-callback" else {
+        guard let host = url.host?.lowercased(),
+              host == "auth-callback" || host == "login-callback" else {
             return
         }
-
-        var params: [String: String] = [:]
-
-        if let fragment = url.fragment, !fragment.isEmpty {
-            for pair in fragment.split(separator: "&") {
-                let parts = pair.split(separator: "=", maxSplits: 1)
-                guard parts.count == 2 else { continue }
-                let key = String(parts[0])
-                let value = String(parts[1]).removingPercentEncoding ?? String(parts[1])
-                params[key] = value
-            }
-        }
-
-        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-           let items = components.queryItems {
-            for item in items {
-                params[item.name] = item.value
-            }
-        }
-
-        if let errorDescription = params["error_description"] ?? params["error"] {
-            setError(translateError(errorDescription.replacingOccurrences(of: "+", with: " ")))
-            return
-        }
-
-        if let access = params["access_token"] {
-            KeychainHelper.set("access_token", value: access)
-            if let refresh = params["refresh_token"] {
-                KeychainHelper.set("refresh_token", value: refresh)
-            }
-            if let supaUser = await fetchUser(accessToken: access) {
-                user = makeUser(from: supaUser, accessToken: access)
-            } else {
-                user = userFromToken(access)
-            }
-            setInfo("メールアドレスが確認されました。ようこそ！")
-            return
-        }
-
-        if let token = params["token"] ?? params["token_hash"] {
-            let type = params["type"] ?? "signup"
-            await verifyEmailToken(token: token, type: type)
-            return
-        }
-    }
-
-    @MainActor
-    private func verifyEmailToken(token: String, type: String) async {
-        guard let url = URL(string: "\(supabaseURL)/auth/v1/verify") else { return }
         do {
-            let (data, http) = try await sendJSON(url: url, body: [
-                "type": type,
-                "token": token
-            ])
-            if http.statusCode < 200 || http.statusCode >= 300 {
-                let err = try? JSONDecoder().decode(SupabaseError.self, from: data)
-                let raw = err?.msg ?? err?.error_description ?? err?.error ?? err?.message
-                setError(translateError(raw ?? "確認リンクが無効か期限切れです"))
-                return
-            }
-            let response = try JSONDecoder().decode(SupabaseTokenResponse.self, from: data)
-            if let access = response.access_token {
-                KeychainHelper.set("access_token", value: access)
-                if let refresh = response.refresh_token {
-                    KeychainHelper.set("refresh_token", value: refresh)
-                }
-                user = makeUser(from: response.user, accessToken: access)
-                setInfo("メールアドレスが確認されました。ようこそ！")
-            } else {
-                setInfo("メールアドレスが確認されました。ログインしてください。")
-            }
+            try await supabase.auth.session(from: url)
+            setInfo("メールアドレスが確認されました。ようこそ！")
         } catch {
-            setError("ネットワークエラー: \(error.localizedDescription)")
+            handleAuthError(error)
         }
     }
 
-    // MARK: - Email OTP verification (signup)
+    // MARK: - Email OTP verification
 
     @MainActor
     func verifySignupOtp(code: String) async {
@@ -262,60 +156,35 @@ class AuthManager: NSObject {
         isVerifyingOtp = true
         defer { isVerifyingOtp = false }
 
-        guard let url = URL(string: "\(supabaseURL)/auth/v1/verify") else {
-            setError("URLが無効です")
-            return
-        }
         do {
-            let (data, http) = try await sendJSON(url: url, body: [
-                "type": "signup",
-                "email": email,
-                "token": trimmedCode
-            ])
-            if http.statusCode < 200 || http.statusCode >= 300 {
-                let err = try? JSONDecoder().decode(SupabaseError.self, from: data)
-                let raw = err?.msg ?? err?.error_description ?? err?.error ?? err?.message
-                setError(translateError(raw ?? "認証コードが無効か期限切れです"))
-                return
-            }
-            let response = try JSONDecoder().decode(SupabaseTokenResponse.self, from: data)
-            if let access = response.access_token {
-                KeychainHelper.set("access_token", value: access)
-                if let refresh = response.refresh_token {
-                    KeychainHelper.set("refresh_token", value: refresh)
-                }
-                user = makeUser(from: response.user, accessToken: access, fallbackName: pendingVerificationName)
-                clearPendingVerification()
-            } else if let password = pendingVerificationPassword {
-                await signIn(email: email, password: password)
-                if user != nil { clearPendingVerification() }
-            } else {
-                setInfo("メールアドレスが確認されました。ログインしてください。")
-                clearPendingVerification()
-            }
+            try await supabase.auth.verifyOTP(
+                email: email,
+                token: trimmedCode,
+                type: .signup
+            )
+            clearPendingVerification()
         } catch {
-            setError("ネットワークエラー: \(error.localizedDescription)")
+            if let password = pendingVerificationPassword {
+                do {
+                    try await supabase.auth.signIn(email: email, password: password)
+                    clearPendingVerification()
+                } catch {
+                    handleAuthError(error)
+                }
+            } else {
+                handleAuthError(error)
+            }
         }
     }
 
     @MainActor
     func resendSignupOtp() async {
         guard let email = pendingVerificationEmail else { return }
-        guard let url = URL(string: "\(supabaseURL)/auth/v1/resend") else { return }
         do {
-            let (data, http) = try await sendJSON(url: url, body: [
-                "type": "signup",
-                "email": email
-            ])
-            if http.statusCode < 200 || http.statusCode >= 300 {
-                let err = try? JSONDecoder().decode(SupabaseError.self, from: data)
-                let raw = err?.msg ?? err?.error_description ?? err?.error ?? err?.message
-                setError(translateError(raw ?? "再送信に失敗しました"))
-                return
-            }
+            try await supabase.auth.resend(email: email, type: .signup)
             setInfo("認証コードを再送信しました。メールをご確認ください。")
         } catch {
-            setError("ネットワークエラー: \(error.localizedDescription)")
+            handleAuthError(error)
         }
     }
 
@@ -359,7 +228,7 @@ class AuthManager: NSObject {
                 if !formatted.isEmpty { fullName = formatted }
             }
 
-            Task { await exchangeIdToken(provider: "apple", idToken: idToken, nonce: nonce, displayName: fullName) }
+            Task { await exchangeAppleToken(idToken: idToken, nonce: nonce, displayName: fullName) }
         case .failure(let error):
             if (error as NSError).code == ASAuthorizationError.canceled.rawValue { return }
             setError("Appleログインに失敗しました: \(error.localizedDescription)")
@@ -367,72 +236,41 @@ class AuthManager: NSObject {
     }
 
     @MainActor
-    private func exchangeIdToken(provider: String, idToken: String, nonce: String, displayName: String?) async {
+    private func exchangeAppleToken(idToken: String, nonce: String, displayName: String?) async {
         isSigningIn = true
         defer { isSigningIn = false }
 
-        guard let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=id_token") else {
-            setError("URLが無効です")
-            return
-        }
-
-        var body: [String: Any] = [
-            "provider": provider,
-            "id_token": idToken,
-            "nonce": nonce
-        ]
-        if let displayName {
-            body["data"] = ["name": displayName]
-        }
-
         do {
-            let (data, http) = try await sendJSON(url: url, body: body)
-            if http.statusCode < 200 || http.statusCode >= 300 {
-                let err = try? JSONDecoder().decode(SupabaseError.self, from: data)
-                let raw = err?.msg ?? err?.error_description ?? err?.error ?? err?.message ?? "Appleログインに失敗しました"
-                setError(translateError(raw))
-                return
-            }
-            let token = try JSONDecoder().decode(SupabaseTokenResponse.self, from: data)
-            if let access = token.access_token {
-                KeychainHelper.set("access_token", value: access)
-                if let refresh = token.refresh_token {
-                    KeychainHelper.set("refresh_token", value: refresh)
-                }
-                user = makeUser(from: token.user, accessToken: access, fallbackName: displayName)
-            } else {
-                setError("Appleログインに失敗しました")
+            try await supabase.auth.signInWithIdToken(
+                credentials: OpenIDConnectCredentials(
+                    provider: .apple,
+                    idToken: idToken,
+                    nonce: nonce
+                )
+            )
+            if let displayName {
+                try? await supabase.auth.update(user: UserAttributes(data: ["name": .string(displayName)]))
             }
         } catch {
-            setError("ネットワークエラー: \(error.localizedDescription)")
+            handleAuthError(error)
         }
     }
 
-    // MARK: - Sign in with Google (OAuth via ASWebAuthenticationSession)
+    // MARK: - Sign in with Google
 
     @MainActor
     func signInWithGoogle() async {
         isSigningIn = true
         defer { isSigningIn = false }
 
-        guard var components = URLComponents(string: "\(supabaseURL)/auth/v1/authorize") else {
-            setError("URLが無効です")
-            return
-        }
-        components.queryItems = [
-            URLQueryItem(name: "provider", value: "google"),
-            URLQueryItem(name: "redirect_to", value: oauthRedirect)
-        ]
-        guard let url = components.url else {
-            setError("URLが無効です")
-            return
-        }
-
         do {
+            let url = try supabase.auth.getOAuthSignInURL(
+                provider: .google,
+                redirectTo: URL(string: oauthRedirect)!
+            )
             let callback = try await runWebAuth(url: url, scheme: "mikoto")
-            try await handleOAuthCallback(callback)
-        } catch let error as WebAuthCancelled {
-            _ = error
+            try await supabase.auth.session(from: callback)
+        } catch is WebAuthCancelled {
             return
         } catch {
             setError("Googleログインに失敗しました: \(error.localizedDescription)")
@@ -465,148 +303,26 @@ class AuthManager: NSObject {
         }
     }
 
-    @MainActor
-    private func handleOAuthCallback(_ url: URL) async throws {
-        var fragment = url.fragment ?? ""
-        if fragment.isEmpty, let query = url.query { fragment = query }
-
-        var params: [String: String] = [:]
-        for pair in fragment.split(separator: "&") {
-            let parts = pair.split(separator: "=", maxSplits: 1)
-            guard parts.count == 2 else { continue }
-            let key = String(parts[0])
-            let value = String(parts[1]).removingPercentEncoding ?? String(parts[1])
-            params[key] = value
-        }
-
-        if let errorDescription = params["error_description"] ?? params["error"] {
-            setError(translateError(errorDescription.replacingOccurrences(of: "+", with: " ")))
-            return
-        }
-
-        guard let access = params["access_token"] else {
-            setError("Googleログインに失敗しました")
-            return
-        }
-
-        KeychainHelper.set("access_token", value: access)
-        if let refresh = params["refresh_token"] {
-            KeychainHelper.set("refresh_token", value: refresh)
-        }
-
-        if let supaUser = await fetchUser(accessToken: access) {
-            user = makeUser(from: supaUser, accessToken: access)
-        } else {
-            user = userFromToken(access)
-        }
-    }
-
-    @MainActor
-    private func fetchUser(accessToken: String) async -> SupabaseUser? {
-        guard let url = URL(string: "\(supabaseURL)/auth/v1/user") else { return nil }
-        var request = URLRequest(url: url)
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            return try JSONDecoder().decode(SupabaseUser.self, from: data)
-        } catch {
-            return nil
-        }
-    }
-
-    // MARK: - Refresh & sign out
-
-    @MainActor
-    private func refreshToken() async {
-        guard let storedRefresh = KeychainHelper.get("refresh_token"),
-              let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=refresh_token") else {
-            user = nil
-            return
-        }
-
-        do {
-            let (data, http) = try await sendJSON(url: url, body: ["refresh_token": storedRefresh])
-            guard http.statusCode == 200 else {
-                await signOut()
-                return
-            }
-            let token = try JSONDecoder().decode(SupabaseTokenResponse.self, from: data)
-            if let access = token.access_token {
-                KeychainHelper.set("access_token", value: access)
-                if let refresh = token.refresh_token {
-                    KeychainHelper.set("refresh_token", value: refresh)
-                }
-                user = makeUser(from: token.user, accessToken: access)
-            } else {
-                await signOut()
-            }
-        } catch {
-            await signOut()
-        }
-    }
+    // MARK: - Sign out
 
     @MainActor
     func signOut() async {
-        KeychainHelper.delete("access_token")
-        KeychainHelper.delete("refresh_token")
+        do {
+            try await supabase.auth.signOut()
+        } catch {
+            NSLog("[Auth] sign out error: %@", error.localizedDescription)
+        }
         user = nil
     }
 
     // MARK: - Helpers
 
-    private func sendJSON(url: URL, body: [String: Any]) async throws -> (Data, HTTPURLResponse) {
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        return (data, http)
-    }
-
-    private func makeUser(from supaUser: SupabaseUser?, accessToken: String, fallbackName: String? = nil) -> User? {
-        if let supaUser {
-            let name = supaUser.user_metadata?["name"]?.stringValue
-                ?? supaUser.user_metadata?["full_name"]?.stringValue
-                ?? fallbackName
-            let picture = supaUser.user_metadata?["picture"]?.stringValue
-                ?? supaUser.user_metadata?["avatar_url"]?.stringValue
-            return User(id: supaUser.id, email: supaUser.email ?? "", name: name, picture: picture)
-        }
-        if var fallback = userFromToken(accessToken) {
-            if fallback.name == nil, let fallbackName {
-                fallback = User(id: fallback.id, email: fallback.email, name: fallbackName, picture: fallback.picture)
-            }
-            return fallback
-        }
-        return nil
-    }
-
-    private func userFromToken(_ token: String) -> User? {
-        let parts = token.split(separator: ".")
-        guard parts.count == 3 else { return nil }
-        var base64 = String(parts[1])
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        while base64.count % 4 != 0 { base64.append("=") }
-        guard let data = Data(base64Encoded: base64) else { return nil }
-
-        struct JWTPayload: Codable {
-            let sub: String
-            let email: String?
-            let exp: TimeInterval?
-        }
-        guard let payload = try? JSONDecoder().decode(JWTPayload.self, from: data) else { return nil }
-        if let exp = payload.exp, Date(timeIntervalSince1970: exp) < Date() {
-            return nil
-        }
-        return User(id: payload.sub, email: payload.email ?? "", name: nil, picture: nil)
+    private func handleAuthError(_ error: Error) {
+        let raw = error.localizedDescription
+        let translated = translateError(raw)
+        inlineAuthError = translated
+        errorMessage = translated
+        showError = true
     }
 
     private func translateError(_ message: String) -> String {
@@ -691,59 +407,3 @@ extension AuthManager: ASWebAuthenticationPresentationContextProviding {
 }
 
 private struct WebAuthCancelled: Error {}
-
-nonisolated private struct SupabaseTokenResponse: Codable, Sendable {
-    let access_token: String?
-    let refresh_token: String?
-    let user: SupabaseUser?
-}
-
-nonisolated private struct SupabaseUser: Codable, Sendable {
-    let id: String
-    let email: String?
-    let user_metadata: [String: AnyJSON]?
-}
-
-nonisolated private struct SupabaseError: Codable, Sendable {
-    let error: String?
-    let error_description: String?
-    let msg: String?
-    let message: String?
-}
-
-nonisolated enum AnyJSON: Codable, Sendable {
-    case string(String)
-    case number(Double)
-    case bool(Bool)
-    case null
-    case object([String: AnyJSON])
-    case array([AnyJSON])
-
-    var stringValue: String? {
-        if case .string(let s) = self { return s }
-        return nil
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.singleValueContainer()
-        if c.decodeNil() { self = .null; return }
-        if let v = try? c.decode(Bool.self) { self = .bool(v); return }
-        if let v = try? c.decode(Double.self) { self = .number(v); return }
-        if let v = try? c.decode(String.self) { self = .string(v); return }
-        if let v = try? c.decode([String: AnyJSON].self) { self = .object(v); return }
-        if let v = try? c.decode([AnyJSON].self) { self = .array(v); return }
-        self = .null
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.singleValueContainer()
-        switch self {
-        case .string(let v): try c.encode(v)
-        case .number(let v): try c.encode(v)
-        case .bool(let v): try c.encode(v)
-        case .null: try c.encodeNil()
-        case .object(let v): try c.encode(v)
-        case .array(let v): try c.encode(v)
-        }
-    }
-}

@@ -1,23 +1,17 @@
 import Foundation
 
-struct Config {
-    // Keys expected in Info.plist. You can add these as String entries if you want to override.
-    private static let supabaseURLKey = "EXPO_PUBLIC_SUPABASE_URL"
-    private static let supabaseAnonKeyKey = "EXPO_PUBLIC_SUPABASE_ANON_KEY"
-
-    static var EXPO_PUBLIC_SUPABASE_URL: String {
-        if let dict = Bundle.main.infoDictionary,
-           let value = dict[supabaseURLKey] as? String {
+enum Config {
+    static let supabaseURL: String = {
+        if let value = Bundle.main.infoDictionary?["EXPO_PUBLIC_SUPABASE_URL"] as? String, !value.isEmpty {
             return value
         }
-        return ""
-    }
+        return "https://nmunmpgljrtljithkjic.supabase.co"
+    }()
 
-    static var EXPO_PUBLIC_SUPABASE_ANON_KEY: String {
-        if let dict = Bundle.main.infoDictionary,
-           let value = dict[supabaseAnonKeyKey] as? String {
+    static let supabaseAnonKey: String = {
+        if let value = Bundle.main.infoDictionary?["EXPO_PUBLIC_SUPABASE_ANON_KEY"] as? String, !value.isEmpty {
             return value
         }
-        return ""
-    }
+        return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tdW5tcGdsanJ0bGppdGhramljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczODE1NDgsImV4cCI6MjA5Mjk1NzU0OH0.AeS7jZILVz52tGxhMLJCGB4kYCKeqDRVWCy3u3oLo-I"
+    }()
 }

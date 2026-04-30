@@ -3,7 +3,11 @@ import SwiftUI
 struct RootView: View {
     @Environment(AuthManager.self) private var auth
     @Environment(OnboardingState.self) private var onboarding
+    @Environment(CreditStore.self) private var credits
+    @Environment(UserStyleStore.self) private var userStyle
+    @Environment(PhotoLibraryStore.self) private var library
     @State private var selection: Tab = .home
+    @State private var didSyncForUser: String?
 
     enum Tab: Hashable { case home, library, settings }
 
@@ -55,5 +59,12 @@ struct RootView: View {
                 .tag(Tab.settings)
         }
         .tint(Theme.coral)
+        .task(id: auth.user?.id) {
+            guard let userId = auth.user?.id, didSyncForUser != userId else { return }
+            didSyncForUser = userId
+            await credits.loadFromSupabase(userId: userId)
+            await userStyle.loadFromSupabase(userId: userId)
+            await library.loadFromSupabase(userId: userId)
+        }
     }
 }

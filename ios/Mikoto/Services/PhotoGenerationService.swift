@@ -34,7 +34,7 @@ nonisolated struct PhotoGenerationService: Sendable {
     private static let model = "gemini-2.5-flash-image"
 
     private static var apiKey: String {
-        (Bundle.main.infoDictionary?["GOOGLE_AI_API_KEY"] as? String) ?? ""
+        Secrets.googleAIApiKey
     }
 
     static func generate(from sourceImage: UIImage, style: PhotoStyle) async throws -> Data {
@@ -144,13 +144,4 @@ nonisolated struct PhotoGenerationService: Sendable {
         throw PhotoGenError.payloadTooLarge
     }
 }
-private let supabaseURL: String = {
-    let configured = (Bundle.main.infoDictionary?["EXPO_PUBLIC_SUPABASE_URL"] as? String) ?? ""
-    return configured.isEmpty ? "https://nmunmpgljrtljithkjic.supabase.co" : configured
-}()
-
-private let supabaseAnonKey: String = {
-    let configured = (Bundle.main.infoDictionary?["EXPO_PUBLIC_SUPABASE_ANON_KEY"] as? String) ?? ""
-    return configured.isEmpty ? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tdW5tcGdsanJ0bGppdGhramljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczODE1NDgsImV4cCI6MjA5Mjk1NzU0OH0.AeS7jZILVz52tGxhMLJCGB4kYCKeqDRVWCy3u3oLo-I" : configured
-}()
 

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Supabase
 
 @Observable
 final class CreditStore {
@@ -16,28 +17,15 @@ final class CreditStore {
         case annual
     }
 
-    var balance: Int {
-        didSet { persist() }
-    }
-    var plan: Plan {
-        didSet { persist() }
-    }
-    var cycle: BillingCycle {
-        didSet { persist() }
-    }
-    var trialActive: Bool {
-        didSet { persist() }
-    }
-    var trialEndsAt: Date? {
-        didSet { persist() }
-    }
-    var renewalDate: Date {
-        didSet { persist() }
-    }
-    var totalGenerated: Int {
-        didSet { persist() }
-    }
+    var balance: Int
+    var plan: Plan
+    var cycle: BillingCycle
+    var trialActive: Bool
+    var trialEndsAt: Date?
+    var renewalDate: Date
+    var totalGenerated: Int
 
+    var userId: String?
     private let key = "mikoto.credit.state.v1"
 
     init() {
@@ -50,7 +38,6 @@ final class CreditStore {
             self.trialEndsAt = saved.trialEndsAt
             self.renewalDate = saved.renewalDate
             self.totalGenerated = saved.totalGenerated
-            self.refreshIfNeeded()
         } else {
             self.balance = 15
             self.plan = .free
@@ -60,6 +47,7 @@ final class CreditStore {
             self.renewalDate = Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()
             self.totalGenerated = 0
         }
+        refreshIfNeeded()
     }
 
     var monthlyAllowance: Int {
@@ -89,10 +77,12 @@ final class CreditStore {
     func deduct(_ amount: Int = costPerPhoto) {
         balance = max(0, balance - amount)
         totalGenerated += 1
+        persistAndSync()
     }
 
     func grantWelcomeBonus() {
         balance = max(balance, 15)
+        persistAndSync()
     }
 
     func subscribe(plan: Plan, cycle: BillingCycle, withTrial: Bool) {
@@ -107,20 +97,22 @@ final class CreditStore {
         let interval: Calendar.Component = cycle == .annual ? .year : .month
         self.renewalDate = Calendar.current.date(byAdding: interval, value: 1, to: Date()) ?? Date()
         self.balance = monthlyAllowance
+        persistAndSync()
     }
 
     func cancelSubscription() {
         plan = .free
         trialActive = false
         trialEndsAt = nil
+        persistAndSync()
     }
 
     func refreshIfNeeded() {
-        if Date() >= renewalDate {
-            balance = monthlyAllowance
-            let interval: Calendar.Component = cycle == .annual ? .year : .month
-            renewalDate = Calendar.current.date(byAdding: interval, value: 1, to: Date()) ?? Date()
-        }
+        guard Date() >= renewalDate else { return }
+        balance = monthlyAllowance
+        let interval: Calendar.Component = cycle == .annual ? .year : .month
+        renewalDate = Calendar.current.date(byAdding: interval, value: 1, to: Date()) ?? Date()
+        persistAndSync()
     }
 
     func reset() {
@@ -131,9 +123,48 @@ final class CreditStore {
         trialEndsAt = nil
         renewalDate = Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()
         totalGenerated = 0
+        persistAndSync()
     }
 
-    private func persist() {
+    // MARK: - Supabase Sync
+
+    @MainActor
+    func loadFromSupabase(userId: String) async {
+        self.userId = userId
+        do {
+            let records: [ProfileRecord] = try await supabase
+                .from("profiles")
+                .select()
+                .eq("id", value: userId)
+                .execute()
+                .value
+
+            guard let record = records.first else {
+                NSLog("[CreditStore] no profile found, creating initial profile")
+                persistAndSync()
+                return
+            }
+
+            balance = record.balance
+            plan = Plan(rawValue: record.plan) ?? .free
+            cycle = BillingCycle(rawValue: record.cycle) ?? .monthly
+            trialActive = record.trialActive
+            trialEndsAt = record.trialEndsAt.flatMap { iso8601.date(from: $0) }
+            if let d = iso8601.date(from: record.renewalDate) {
+                renewalDate = d
+            }
+            totalGenerated = record.totalGenerated
+            persistLocally()
+
+            NSLog("[CreditStore] loaded from Supabase: balance=%d plan=%@ total=%d", balance, plan.rawValue, totalGenerated)
+        } catch {
+            NSLog("[CreditStore] load failed: %@", error.localizedDescription)
+        }
+    }
+
+    // MARK: - Persistence
+
+    private func persistLocally() {
         let snap = Persisted(
             balance: balance,
             plan: plan,
@@ -145,6 +176,28 @@ final class CreditStore {
         )
         if let data = try? JSONEncoder().encode(snap) {
             UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    private func persistAndSync() {
+        persistLocally()
+        guard let userId else { return }
+        Task {
+            do {
+                let record = ProfileRecord(
+                    id: userId,
+                    balance: balance,
+                    plan: plan.rawValue,
+                    cycle: cycle.rawValue,
+                    trialActive: trialActive,
+                    trialEndsAt: trialEndsAt.map { iso8601.string(from: $0) },
+                    renewalDate: iso8601.string(from: renewalDate),
+                    totalGenerated: totalGenerated
+                )
+                try await supabase.from("profiles").upsert(record).execute()
+            } catch {
+                NSLog("[CreditStore] sync failed: %@", error.localizedDescription)
+            }
         }
     }
 

@@ -32,3 +32,6 @@ Package.resolved
 .rork/
 .env
 Config.swift
+
+# Secrets
+Mikoto/Secrets.swift
