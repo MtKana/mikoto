@@ -29,8 +29,18 @@
 		105FC5932E9EAD3200EA8BCF /* MikotoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MikotoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		3E0CDB152FA31239001E1494 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Services/Info.plist,
+			);
+			target = 105FC5792E9EAD3100EA8BCF /* Mikoto */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		105FC57C2E9EAD3100EA8BCF /* Mikoto */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Mikoto; sourceTree = "<group>"; };
+		105FC57C2E9EAD3100EA8BCF /* Mikoto */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (3E0CDB152FA31239001E1494 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Mikoto; sourceTree = "<group>"; };
 		105FC58C2E9EAD3200EA8BCF /* MikotoTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = MikotoTests; sourceTree = "<group>"; };
 		105FC5962E9EAD3200EA8BCF /* MikotoUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = MikotoUITests; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -390,7 +400,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = R2523995JM;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Mikoto/Services/Info.plist;
 				INFOPLIST_KEY_CFBundleURLTypes = "(\n  {\n    CFBundleURLName = \"app.rork.rz2e0xeqdz73wdw7tx6lw\";\n    CFBundleURLSchemes = ( \"mikoto\" );\n  }\n)";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Mikoto saves your generated profile photos to your library.";
@@ -427,7 +438,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = R2523995JM;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Mikoto/Services/Info.plist;
 				INFOPLIST_KEY_CFBundleURLTypes = "(\n  {\n    CFBundleURLName = \"app.rork.rz2e0xeqdz73wdw7tx6lw\";\n    CFBundleURLSchemes = ( \"mikoto\" );\n  }\n)";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Mikoto saves your generated profile photos to your library.";

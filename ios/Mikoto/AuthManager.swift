@@ -127,9 +127,16 @@ class AuthManager: NSObject {
                 return
             }
 
+            if let respString = String(data: data, encoding: .utf8) {
+                NSLog("[Auth] success response: %@", respString)
+            }
+
             let token = try JSONDecoder().decode(SupabaseTokenResponse.self, from: data)
 
-            if let access = token.access_token {
+            NSLog("[Auth] access_token present: %@, isSignUp: %@", token.access_token != nil ? "YES" : "NO", isSignUp ? "YES" : "NO")
+            NSLog("[Auth] access_token value: '%@'", token.access_token ?? "(nil)")
+
+            if let access = token.access_token, !access.isEmpty {
                 KeychainHelper.set("access_token", value: access)
                 if let refresh = token.refresh_token {
                     KeychainHelper.set("refresh_token", value: refresh)
@@ -137,6 +144,7 @@ class AuthManager: NSObject {
                 user = makeUser(from: token.user, accessToken: access)
             } else if isSignUp {
                 if let bodyEmail = body["email"] as? String {
+                    NSLog("[Auth] setting pendingVerificationEmail: %@", bodyEmail)
                     pendingVerificationEmail = bodyEmail
                     pendingVerificationPassword = body["password"] as? String
                     if let data = body["data"] as? [String: Any] {

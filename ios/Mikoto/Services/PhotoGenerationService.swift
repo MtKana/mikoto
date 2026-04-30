@@ -32,13 +32,12 @@ nonisolated enum PhotoGenError: LocalizedError {
 nonisolated struct PhotoGenerationService: Sendable {
 
     private static var toolkitURL: String {
-        let v = Config.allValues["EXPO_PUBLIC_TOOLKIT_URL"] ?? ""
-        if !v.isEmpty { return v }
-        return "https://toolkit.rork.com"
+        let configured = (Bundle.main.infoDictionary?["EXPO_PUBLIC_TOOLKIT_URL"] as? String) ?? ""
+        return configured.isEmpty ? "https://toolkit.rork.com" : configured
     }
 
     private static var secretKey: String {
-        Config.EXPO_PUBLIC_RORK_TOOLKIT_SECRET_KEY
+        (Bundle.main.infoDictionary?["EXPO_PUBLIC_RORK_TOOLKIT_SECRET_KEY"] as? String) ?? ""
     }
 
     static func generate(from sourceImage: UIImage, style: PhotoStyle) async throws -> Data {
@@ -158,5 +157,13 @@ nonisolated struct PhotoGenerationService: Sendable {
         throw PhotoGenError.payloadTooLarge
     }
 }
+private let supabaseURL: String = {
+    let configured = (Bundle.main.infoDictionary?["EXPO_PUBLIC_SUPABASE_URL"] as? String) ?? ""
+    return configured.isEmpty ? "https://nmunmpgljrtljithkjic.supabase.co" : configured
+}()
 
+private let supabaseAnonKey: String = {
+    let configured = (Bundle.main.infoDictionary?["EXPO_PUBLIC_SUPABASE_ANON_KEY"] as? String) ?? ""
+    return configured.isEmpty ? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tdW5tcGdsanJ0bGppdGhramljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczODE1NDgsImV4cCI6MjA5Mjk1NzU0OH0.AeS7jZILVz52tGxhMLJCGB4kYCKeqDRVWCy3u3oLo-I" : configured
+}()
 

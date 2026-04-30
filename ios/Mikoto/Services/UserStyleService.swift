@@ -13,14 +13,28 @@ nonisolated struct StyleAnswers: Sendable {
 }
 
 nonisolated struct UserStyleService: Sendable {
+    private let supabaseURL: String = {
+        let env = ProcessInfo.processInfo.environment
+        let configured = env["EXPO_PUBLIC_SUPABASE_URL"] ?? ""
+        return configured.isEmpty ? "https://nmunmpgljrtljithkjic.supabase.co" : configured
+    }()
+    private let supabaseAnonKey: String = {
+        let env = ProcessInfo.processInfo.environment
+        let configured = env["EXPO_PUBLIC_SUPABASE_ANON_KEY"] ?? ""
+        return configured.isEmpty ? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tdW5tcGdsanJ0bGppdGhramljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczODE1NDgsImV4cCI6MjA5Mjk1NzU0OH0.AeS7jZILVz52tGxhMLJCGB4kYCKeqDRVWCy3u3oLo-I" : configured
+    }()
+    var inlineAuthError: String?
+    private let oauthRedirect = "mikoto://auth-callback"
 
     private static var toolkitURL: String {
-        let v = Config.allValues["EXPO_PUBLIC_TOOLKIT_URL"] ?? ""
+        let env = ProcessInfo.processInfo.environment
+        let v = env["EXPO_PUBLIC_TOOLKIT_URL"] ?? ""
         return v.isEmpty ? "https://toolkit.rork.com" : v
     }
 
     private static var secretKey: String {
-        Config.EXPO_PUBLIC_RORK_TOOLKIT_SECRET_KEY
+        let env = ProcessInfo.processInfo.environment
+        return env["EXPO_PUBLIC_RORK_TOOLKIT_SECRET_KEY"] ?? ""
     }
 
     static func generate(answers: StyleAnswers) async throws -> UserStyleData {
