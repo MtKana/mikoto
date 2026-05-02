@@ -3,7 +3,7 @@ import Observation
 
 @Observable
 final class OnboardingState {
-    var hasCompleted: Bool {
+    var hasCompleted: Bool = false {
         didSet { UserDefaults.standard.set(hasCompleted, forKey: key) }
     }
 
@@ -24,10 +24,12 @@ final class OnboardingState {
     var impression: String = ""
     var struggle: String = ""
 
-    private let key = "mikoto.onboarding.completed.v1"
+    private var userId: String?
+    private var key: String { "mikoto.onboarding.\(userId ?? "default").v1" }
 
-    init() {
-        self.hasCompleted = UserDefaults.standard.bool(forKey: key)
+    func switchUser(_ userId: String) {
+        self.userId = userId
+        hasCompleted = UserDefaults.standard.bool(forKey: key)
     }
 
     func complete() {

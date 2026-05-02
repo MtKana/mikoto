@@ -6,8 +6,9 @@ struct RootView: View {
     @Environment(CreditStore.self) private var credits
     @Environment(UserStyleStore.self) private var userStyle
     @Environment(PhotoLibraryStore.self) private var library
+    @Environment(AppPreferences.self) private var prefs
     @State private var selection: Tab = .home
-    @State private var didSyncForUser: String?
+    @State private var activeUserId: String?
 
     enum Tab: Hashable { case home, library, settings }
 
@@ -17,11 +18,25 @@ struct RootView: View {
                 loadingView
             } else if auth.user == nil {
                 SignInView()
+            } else if activeUserId != auth.user?.id {
+                loadingView
             } else if !onboarding.hasCompleted {
                 OnboardingFlow()
             } else {
                 mainTabs
             }
+        }
+        .task(id: auth.user?.id) {
+            guard let userId = auth.user?.id else {
+                activeUserId = nil
+                return
+            }
+            credits.switchUser(userId)
+            userStyle.switchUser(userId)
+            library.switchUser(userId)
+            onboarding.switchUser(userId)
+            prefs.switchUser(userId)
+            activeUserId = userId
         }
     }
 
@@ -59,12 +74,5 @@ struct RootView: View {
                 .tag(Tab.settings)
         }
         .tint(Theme.coral)
-        .task(id: auth.user?.id) {
-            guard let userId = auth.user?.id, didSyncForUser != userId else { return }
-            didSyncForUser = userId
-            await credits.loadFromSupabase(userId: userId)
-            await userStyle.loadFromSupabase(userId: userId)
-            await library.loadFromSupabase(userId: userId)
-        }
     }
 }

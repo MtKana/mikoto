@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 import SwiftUI
-import Supabase
 
 nonisolated struct UserStyleData: Codable, Sendable {
     let nameJP: String
@@ -39,51 +38,39 @@ nonisolated struct UserStyleData: Codable, Sendable {
 final class UserStyleStore {
     var data: UserStyleData?
 
-    var onChange: (() -> Void)?
-    private var suppressOnChange: Bool = false
+    private var userId: String?
+    private var key: String { "mikoto.userstyle.\(userId ?? "default").v1" }
 
-    private let key = "mikoto.userstyle.v1"
+    var style: PhotoStyle? { data?.toStyle() }
+    var explanation: String? { data?.explanation }
 
-    init() {
-        if let bytes = UserDefaults.standard.data(forKey: key),
-           let saved = try? JSONDecoder().decode(UserStyleData.self, from: bytes) {
-            self.data = saved
-        }
-    }
-
-    var style: PhotoStyle? {
-        data?.toStyle()
-    }
-
-    var explanation: String? {
-        data?.explanation
+    func switchUser(_ userId: String) {
+        self.userId = userId
+        reload()
     }
 
     func save(_ data: UserStyleData) {
         self.data = data
-        persistLocally()
-        guard let userId else { return }
-        Task {
-            do {
-                let record = UserStyleRecord(userId: userId, styleData: data)
-                try await supabase.from("user_styles").upsert(record, onConflict: "user_id").execute()
-                NSLog("[UserStyleStore] synced to Supabase")
-            } catch {
-                NSLog("[UserStyleStore] sync failed: %@", error.localizedDescription)
-            }
-        }
-        if !suppressOnChange { onChange?() }
+        persist()
     }
 
     func reset() {
         data = nil
         UserDefaults.standard.removeObject(forKey: key)
-        if !suppressOnChange { onChange?() }
     }
 
-    func applyRemote(_ data: UserStyleData) {
-        suppressOnChange = true
-        defer { suppressOnChange = false }
-        save(data)
+    private func reload() {
+        if let bytes = UserDefaults.standard.data(forKey: key),
+           let saved = try? JSONDecoder().decode(UserStyleData.self, from: bytes) {
+            data = saved
+        } else {
+            data = nil
+        }
+    }
+
+    private func persist() {
+        if let encoded = try? JSONEncoder().encode(data) {
+            UserDefaults.standard.set(encoded, forKey: key)
+        }
     }
 }

@@ -32,8 +32,6 @@ class AuthManager: NSObject {
 
     override init() {
         super.init()
-        KeychainHelper.delete("access_token")
-        KeychainHelper.delete("refresh_token")
         Task { await observeAuthState() }
     }
 

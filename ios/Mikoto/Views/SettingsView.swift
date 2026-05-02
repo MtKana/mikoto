@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 struct SettingsView: View {
     @Environment(AuthManager.self) private var auth
@@ -14,6 +15,7 @@ struct SettingsView: View {
     @State private var showCancelConfirm = false
     @State private var showEditName = false
     @State private var draftName = ""
+    @State private var notificationsAuthorized = false
 
     var body: some View {
         NavigationStack {
@@ -85,6 +87,7 @@ struct SettingsView: View {
             }
             .background(Theme.bone.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
+            .task { await checkNotificationStatus() }
             .fullScreenCover(isPresented: $showPaywall) {
                 PaywallView()
             }
@@ -131,6 +134,33 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Notifications
+
+    private func checkNotificationStatus() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        notificationsAuthorized = settings.authorizationStatus == .authorized
+    }
+
+    private func toggleNotifications(enabled: Bool) {
+        if enabled {
+            Task {
+                let granted = try? await UNUserNotificationCenter.current()
+                    .requestAuthorization(options: [.alert, .badge, .sound])
+                await MainActor.run {
+                    notificationsAuthorized = granted ?? false
+                    prefs.notificationsEnabled = granted ?? false
+                }
+            }
+        } else {
+            prefs.notificationsEnabled = false
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        }
+    }
+
+    // MARK: - Header
+
     private var masthead: some View {
         HStack {
             Wordmark(size: 18)
@@ -140,6 +170,8 @@ struct SettingsView: View {
             }
         }
     }
+
+    // MARK: - Profile Card
 
     private var profileCard: some View {
         HStack(spacing: 16) {
@@ -374,6 +406,8 @@ struct SettingsView: View {
             .foregroundStyle(Theme.inkSubtle)
     }
 
+    // MARK: - Account
+
     private var accountSection: some View {
         VStack(spacing: 0) {
             settingsRow(icon: "person.fill", color: Theme.sky, title: "表示名", value: displayedName) {
@@ -381,17 +415,13 @@ struct SettingsView: View {
                 showEditName = true
             }
             divider
-            settingsRow(icon: "envelope.fill", color: Theme.tangerine, title: "メールアドレス", value: auth.user?.email ?? "—", action: nil)
+            infoRow(icon: "envelope.fill", color: Theme.tangerine, title: "メールアドレス", value: auth.user?.email ?? "—")
             divider
-            settingsRow(icon: "arrow.clockwise", color: Theme.mint, title: "購入を復元", value: "", action: {
-                // Restore via RevenueCat would go here
-            })
-            divider
-            settingsRow(icon: "creditcard.fill", color: Theme.lavender, title: "サブスクリプション管理", value: "", action: {
+            settingsRow(icon: "creditcard.fill", color: Theme.lavender, title: "サブスクリプション管理", value: "") {
                 if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
                     UIApplication.shared.open(url)
                 }
-            })
+            }
         }
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -400,9 +430,10 @@ struct SettingsView: View {
         .shadow(color: .black.opacity(0.04), radius: 8, y: 3)
     }
 
+    // MARK: - App
+
     private func appSection(prefs: AppPreferences) -> some View {
-        @Bindable var prefs = prefs
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Image(systemName: "bell.fill")
                     .font(.system(size: 13, weight: .heavy))
@@ -413,21 +444,28 @@ struct SettingsView: View {
                     .font(.mikotoSans(14, weight: .heavy))
                     .foregroundStyle(Theme.ink)
                 Spacer()
-                Toggle("", isOn: $prefs.notificationsEnabled)
-                    .labelsHidden()
-                    .tint(Theme.coral)
+                Toggle("", isOn: Binding(
+                    get: { prefs.notificationsEnabled && notificationsAuthorized },
+                    set: { toggleNotifications(enabled: $0) }
+                ))
+                .labelsHidden()
+                .tint(Theme.coral)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
 
             divider
 
-            settingsRow(icon: "globe", color: Theme.lavender, title: "言語", value: "日本語", action: nil)
+            settingsRow(icon: "globe", color: Theme.lavender, title: "言語", value: "日本語") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
             divider
             Button {
                 showDeleteConfirm = true
             } label: {
-                settingsRowContent(icon: "trash.fill", color: Theme.coral, title: "ライブラリをすべて削除", value: "", destructive: true)
+                settingsRowContent(icon: "trash.fill", color: Theme.coral, title: "ライブラリをすべて削除", value: "", showChevron: true, destructive: true)
             }
             .buttonStyle(.plain)
             .disabled(library.photos.isEmpty)
@@ -440,19 +478,21 @@ struct SettingsView: View {
         .shadow(color: .black.opacity(0.04), radius: 8, y: 3)
     }
 
+    // MARK: - Support
+
     private var supportSection: some View {
         VStack(spacing: 0) {
-            settingsRow(icon: "questionmark.circle.fill", color: Theme.sky, title: "ヘルプ・FAQ", value: "", action: {
+            settingsRow(icon: "questionmark.circle.fill", color: Theme.sky, title: "ヘルプ・FAQ", value: "") {
                 if let url = URL(string: "https://rork.com") {
                     UIApplication.shared.open(url)
                 }
-            })
+            }
             divider
-            settingsRow(icon: "envelope.fill", color: Theme.tangerine, title: "お問い合わせ", value: "", action: {
+            settingsRow(icon: "envelope.fill", color: Theme.tangerine, title: "お問い合わせ", value: "") {
                 if let url = URL(string: "mailto:support@mikoto.app?subject=ミコトについて") {
                     UIApplication.shared.open(url)
                 }
-            })
+            }
         }
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -460,20 +500,22 @@ struct SettingsView: View {
         )
         .shadow(color: .black.opacity(0.04), radius: 8, y: 3)
     }
+
+    // MARK: - Legal
 
     private var legalSection: some View {
         VStack(spacing: 0) {
-            settingsRow(icon: "doc.text.fill", color: Theme.inkSubtle, title: "利用規約", value: "", action: {
+            settingsRow(icon: "doc.text.fill", color: Theme.inkSubtle, title: "利用規約", value: "") {
                 if let url = URL(string: "https://rork.com/terms") {
                     UIApplication.shared.open(url)
                 }
-            })
+            }
             divider
-            settingsRow(icon: "hand.raised.fill", color: Theme.inkSubtle, title: "プライバシーポリシー", value: "", action: {
+            settingsRow(icon: "hand.raised.fill", color: Theme.inkSubtle, title: "プライバシーポリシー", value: "") {
                 if let url = URL(string: "https://rork.com/privacy") {
                     UIApplication.shared.open(url)
                 }
-            })
+            }
         }
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -482,20 +524,20 @@ struct SettingsView: View {
         .shadow(color: .black.opacity(0.04), radius: 8, y: 3)
     }
 
-    private func settingsRow(icon: String, color: Color, title: String, value: String, action: (() -> Void)? = nil) -> some View {
-        Group {
-            if let action {
-                Button(action: action) {
-                    settingsRowContent(icon: icon, color: color, title: title, value: value, destructive: false)
-                }
-                .buttonStyle(.plain)
-            } else {
-                settingsRowContent(icon: icon, color: color, title: title, value: value, destructive: false)
-            }
+    // MARK: - Row Components
+
+    private func settingsRow(icon: String, color: Color, title: String, value: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            settingsRowContent(icon: icon, color: color, title: title, value: value, showChevron: true, destructive: false)
         }
+        .buttonStyle(.plain)
     }
 
-    private func settingsRowContent(icon: String, color: Color, title: String, value: String, destructive: Bool) -> some View {
+    private func infoRow(icon: String, color: Color, title: String, value: String) -> some View {
+        settingsRowContent(icon: icon, color: color, title: title, value: value, showChevron: false, destructive: false)
+    }
+
+    private func settingsRowContent(icon: String, color: Color, title: String, value: String, showChevron: Bool, destructive: Bool) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .heavy))
@@ -512,9 +554,11 @@ struct SettingsView: View {
                     .foregroundStyle(Theme.inkSubtle)
                     .lineLimit(1)
             }
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .heavy))
-                .foregroundStyle(Theme.inkSubtle.opacity(0.5))
+            if showChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundStyle(Theme.inkSubtle.opacity(0.5))
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 13)
@@ -526,6 +570,8 @@ struct SettingsView: View {
             .frame(height: 1)
             .padding(.leading, 56)
     }
+
+    // MARK: - Bottom Actions
 
     private var signOutButton: some View {
         Button {
@@ -570,7 +616,7 @@ struct SettingsView: View {
             Text("ミコト")
                 .font(.mikotoDisplay(12, weight: .black))
                 .foregroundStyle(Theme.inkSubtle)
-            Text("バージョン 1.0.0 · Made in Tokyo")
+            Text("バージョン 1.1.0 · Made in Tokyo")
                 .font(.mikotoSans(11, weight: .medium))
                 .foregroundStyle(Theme.inkSubtle.opacity(0.7))
         }
