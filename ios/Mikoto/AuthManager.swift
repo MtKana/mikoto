@@ -96,7 +96,6 @@ class AuthManager: NSObject {
                     type: .signup,
                     emailRedirectTo: emailRedirectURL
                 )
-                setInfo("認証コードをメールで送信しました。コードを入力してログインを完了してください。")
                 return
             }
             handleAuthError(error)
@@ -140,7 +139,6 @@ class AuthManager: NSObject {
                 pendingVerificationEmail = trimmed
                 pendingVerificationPassword = password
                 pendingVerificationName = name
-                setInfo("認証コードをメールで送信しました。受信箱をご確認ください。")
             }
         } catch {
             handleAuthError(error)
