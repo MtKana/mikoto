@@ -33,5 +33,3 @@ Package.resolved
 .env
 Config.swift
 
-# Secrets
-Mikoto/Secrets.swift
