@@ -22,6 +22,7 @@ class AuthManager: NSObject {
     private var currentNonce: String?
     private var googleSession: ASWebAuthenticationSession?
     private let oauthRedirect = "mikoto://auth-callback"
+    private var emailRedirectURL: URL? { URL(string: oauthRedirect) }
 
     nonisolated struct User: Codable, Sendable {
         let id: String
@@ -82,6 +83,22 @@ class AuthManager: NSObject {
         do {
             try await supabase.auth.signIn(email: trimmed, password: password)
         } catch {
+            // If email is not confirmed, route the user into the OTP screen
+            // so they can finish verification with the code we just sent.
+            let lower = error.localizedDescription.lowercased()
+            if lower.contains("email not confirmed") || lower.contains("not confirmed") {
+                pendingVerificationEmail = trimmed
+                pendingVerificationPassword = password
+                pendingVerificationName = nil
+                // Trigger a fresh OTP email so the user has a current code.
+                try? await supabase.auth.resend(
+                    email: trimmed,
+                    type: .signup,
+                    emailRedirectTo: emailRedirectURL
+                )
+                setInfo("認証コードをメールで送信しました。コードを入力してログインを完了してください。")
+                return
+            }
             handleAuthError(error)
         }
     }
@@ -109,12 +126,23 @@ class AuthManager: NSObject {
             let response = try await supabase.auth.signUp(
                 email: trimmed,
                 password: password,
-                data: userData.isEmpty ? nil : userData
+                data: userData.isEmpty ? nil : userData,
+                redirectTo: emailRedirectURL
             )
+
+            // Detect "user already registered" — Supabase returns a fake user
+            // with an empty identities array when confirm-email is on.
+            let identitiesEmpty = (response.user.identities?.isEmpty ?? false)
+            if response.session == nil && identitiesEmpty {
+                setError("このメールアドレスは既に登録されています。ログインしてください。")
+                return
+            }
+
             if response.session == nil {
                 pendingVerificationEmail = trimmed
                 pendingVerificationPassword = password
                 pendingVerificationName = name
+                setInfo("認証コードをメールで送信しました。受信箱をご確認ください。")
             }
         } catch {
             handleAuthError(error)
@@ -179,7 +207,11 @@ class AuthManager: NSObject {
     func resendSignupOtp() async {
         guard let email = pendingVerificationEmail else { return }
         do {
-            try await supabase.auth.resend(email: email, type: .signup)
+            try await supabase.auth.resend(
+                email: email,
+                type: .signup,
+                emailRedirectTo: emailRedirectURL
+            )
             setInfo("認証コードを再送信しました。メールをご確認ください。")
         } catch {
             handleAuthError(error)
