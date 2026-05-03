@@ -130,14 +130,12 @@ class AuthManager: NSObject {
                 redirectTo: emailRedirectURL
             )
 
-            // Detect "user already registered" — Supabase returns a fake user
-            // with an empty identities array when confirm-email is on.
-            let identitiesEmpty = (response.user.identities?.isEmpty ?? false)
-            if response.session == nil && identitiesEmpty {
-                setError("このメールアドレスは既に登録されています。ログインしてください。")
-                return
-            }
-
+            // If we got a session immediately (confirm-email disabled), we're done.
+            // Otherwise route the user to OTP verification. We intentionally do NOT
+            // try to detect "already registered" via the identities array — that
+            // signal is unreliable and produces false positives that block real
+            // signups. If the email truly exists and is confirmed, Supabase
+            // throws an explicit error which we handle in the catch block.
             if response.session == nil {
                 pendingVerificationEmail = trimmed
                 pendingVerificationPassword = password
