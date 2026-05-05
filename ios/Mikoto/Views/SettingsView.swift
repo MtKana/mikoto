@@ -483,13 +483,13 @@ struct SettingsView: View {
     private var supportSection: some View {
         VStack(spacing: 0) {
             settingsRow(icon: "questionmark.circle.fill", color: Theme.sky, title: "ヘルプ・FAQ", value: "") {
-                if let url = URL(string: "https://rork.com") {
+                if let url = URL(string: "https://x220-158-17-129.static.xvps.ne.jp/mikoto/faq.html") {
                     UIApplication.shared.open(url)
                 }
             }
             divider
             settingsRow(icon: "envelope.fill", color: Theme.tangerine, title: "お問い合わせ", value: "") {
-                if let url = URL(string: "mailto:support@mikoto.app?subject=ミコトについて") {
+                if let url = URL(string: "https://x220-158-17-129.static.xvps.ne.jp/mikoto/contact.html") {
                     UIApplication.shared.open(url)
                 }
             }
@@ -506,13 +506,13 @@ struct SettingsView: View {
     private var legalSection: some View {
         VStack(spacing: 0) {
             settingsRow(icon: "doc.text.fill", color: Theme.inkSubtle, title: "利用規約", value: "") {
-                if let url = URL(string: "https://rork.com/terms") {
+                if let url = URL(string: "https://x220-158-17-129.static.xvps.ne.jp/mikoto/terms.html") {
                     UIApplication.shared.open(url)
                 }
             }
             divider
             settingsRow(icon: "hand.raised.fill", color: Theme.inkSubtle, title: "プライバシーポリシー", value: "") {
-                if let url = URL(string: "https://rork.com/privacy") {
+                if let url = URL(string: "https://x220-158-17-129.static.xvps.ne.jp/mikoto/privacy.html") {
                     UIApplication.shared.open(url)
                 }
             }

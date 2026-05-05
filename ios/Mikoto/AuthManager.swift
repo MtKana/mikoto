@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 import AuthenticationServices
 import CryptoKit
+import Auth
 import Supabase
 
 @Observable
@@ -93,7 +94,7 @@ class AuthManager: NSObject {
                 // Trigger a fresh OTP email so the user has a current code.
                 try? await supabase.auth.resend(
                     email: trimmed,
-                    type: .signup,
+                    type: ResendEmailType.signup,
                     emailRedirectTo: emailRedirectURL
                 )
                 return
@@ -182,7 +183,7 @@ class AuthManager: NSObject {
             try await supabase.auth.verifyOTP(
                 email: email,
                 token: trimmedCode,
-                type: .signup
+                type: EmailOTPType.signup
             )
             clearPendingVerification()
         } catch {
@@ -205,7 +206,7 @@ class AuthManager: NSObject {
         do {
             try await supabase.auth.resend(
                 email: email,
-                type: .signup,
+                type: ResendEmailType.signup,
                 emailRedirectTo: emailRedirectURL
             )
             setInfo("認証コードを再送信しました。メールをご確認ください。")
@@ -291,7 +292,7 @@ class AuthManager: NSObject {
 
         do {
             let url = try supabase.auth.getOAuthSignInURL(
-                provider: .google,
+                provider: Provider.google,
                 redirectTo: URL(string: oauthRedirect)!
             )
             let callback = try await runWebAuth(url: url, scheme: "mikoto")
@@ -344,6 +345,9 @@ class AuthManager: NSObject {
     // MARK: - Helpers
 
     private func handleAuthError(_ error: Error) {
+        NSLog("[Auth] raw error type: %@", String(describing: type(of: error)))
+        NSLog("[Auth] raw error: %@", String(describing: error))
+        NSLog("[Auth] localizedDescription: %@", error.localizedDescription)
         let raw = error.localizedDescription
         let translated = translateError(raw)
         inlineAuthError = translated
